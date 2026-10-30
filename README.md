@@ -24,7 +24,7 @@ Grab the [1.0 release](https://github.com/RosemyneH/TrunBlizzDmg335Patcher/relea
 | `TrunBlizzDmg335Patcher.exe` | Patches a 32-bit client or 64 bit client, based on what u point at |
 | `TrunBlizzDmg335Patcher.dll` | Loaded by that client |
 | `TrunBlizzDmg335Patcher-linux` | Patches a 32-bit client or 64 bit client, based on what u point at |
-| `libTrunBlizzDmg335Patcher.so` | Loaded by that client |
+| `libTrunBlizzDmg335Patcher.so` | Loaded by that client only for 64 bit |
 
 ## 32-bit client
 
