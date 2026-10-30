@@ -36,8 +36,60 @@ static int ieq(const char *a, const char *b) {
     return *a == 0 && *b == 0;
 }
 
+static const char k_export[] = "TrunBlizzLoad";
+
 static void fail(char *err, unsigned err_cap, const char *text) {
     if (err && err_cap) snprintf(err, err_cap, "%s", text);
+}
+
+static void put32(uint8_t *p, uint32_t value) {
+    memcpy(p, &value, 4);
+}
+
+static int commit_image(const char *path, uint8_t *image, size_t size, uint32_t e_lfanew, char *err, unsigned err_cap) {
+    char bak[4096];
+    char tmp[4096];
+    FILE *file;
+    size_t checksum_off = (size_t)e_lfanew + 24u + 64u;
+    uint32_t sum;
+
+    memset(image + checksum_off, 0, 4);
+    sum = pe_checksum(image, size, checksum_off);
+    memcpy(image + checksum_off, &sum, 4);
+
+    snprintf(bak, sizeof bak, "%s.bak", path);
+    file = fopen(bak, "rb");
+    if (file) {
+        fclose(file);
+    } else {
+        FILE *src = fopen(path, "rb");
+        uint8_t buf[8192];
+        size_t n;
+        file = fopen(bak, "wb");
+        if (!file || !src) {
+            if (file) fclose(file);
+            if (src) fclose(src);
+            fail(err, err_cap, "cannot write backup");
+            return -1;
+        }
+        while ((n = fread(buf, 1, sizeof buf, src)) > 0) fwrite(buf, 1, n, file);
+        fclose(src);
+        fclose(file);
+    }
+
+    snprintf(tmp, sizeof tmp, "%s.truntmp", path);
+    file = fopen(tmp, "wb");
+    if (!file || fwrite(image, 1, size, file) != size) {
+        if (file) fclose(file);
+        fail(err, err_cap, "cannot write patched exe");
+        return -1;
+    }
+    fclose(file);
+    if (rename(tmp, path) != 0) {
+        fail(err, err_cap, "cannot replace exe");
+        return -1;
+    }
+    return 0;
 }
 
 int pe_add_import(const char *path, const char *dll_name, char *err, unsigned err_cap) {
@@ -51,14 +103,13 @@ int pe_add_import(const char *path, const char *dll_name, char *err, unsigned er
     uint8_t *opt;
     uint8_t *sec;
     uint32_t orig_count = 0;
-    uint32_t desc_bytes, name_off, int_off, iat_off;
+    uint32_t desc_bytes, name_off, int_off, iat_off, ibn_off;
+    uint32_t match_index = 0;
+    uint32_t match_oft = 0;
+    uint32_t match_name = 0;
     uint8_t *blob = 0;
     uint32_t blob_len = 0;
     uint32_t blob_cap = 0;
-    char tmp[4096];
-    char bak[4096];
-    size_t checksum_off;
-    uint32_t sum;
     int present = 0;
     uint32_t i;
 
@@ -158,13 +209,72 @@ int pe_add_import(const char *path, const char *dll_name, char *err, unsigned er
             memcpy(&raw, sec + i * 40 + 20, 4);
             if (name >= va && name < va + raw_sz) name_rva_off = raw + (name - va);
         }
-        if (name_rva_off && name_rva_off < (uint32_t)file_size && ieq((char *)image + name_rva_off, dll_name)) present = 1;
+        if (name_rva_off && name_rva_off < (uint32_t)file_size && ieq((char *)image + name_rva_off, dll_name)) {
+            present = 1;
+            match_index = orig_count;
+            match_oft = oft;
+            match_name = name;
+        }
         orig_count++;
     }
     if (present) {
+        uint32_t oft_off = 0;
+        uint32_t thunk = 0;
+        uint32_t sec_va = 0, sec_virt = 0, sec_raw = 0, sec_rawsz = 0, sec_i = 0;
+        uint32_t place, ibn_rva, int_rva, iat_rva, need;
+        int found_sec = 0;
+        for (i = 0; i < nsec; i++) {
+            uint32_t va, raw_sz, raw;
+            memcpy(&va, sec + i * 40 + 12, 4);
+            memcpy(&raw_sz, sec + i * 40 + 16, 4);
+            memcpy(&raw, sec + i * 40 + 20, 4);
+            if (match_oft >= va && match_oft < va + raw_sz) oft_off = raw + (match_oft - va);
+            if (match_name >= va && match_name < va + raw_sz) {
+                memcpy(&sec_virt, sec + i * 40 + 8, 4);
+                sec_va = va;
+                sec_raw = raw;
+                sec_rawsz = raw_sz;
+                sec_i = i;
+                found_sec = 1;
+            }
+        }
+        if (!oft_off || !found_sec) {
+            free(image);
+            fail(err, err_cap, "existing import is not in a section");
+            return -1;
+        }
+        memcpy(&thunk, image + oft_off, 4);
+        if (thunk) {
+            free(image);
+            fail(err, err_cap, "already patched");
+            return 1;
+        }
+        if (!sec_virt) sec_virt = sec_rawsz;
+        place = align_up(sec_virt, 2);
+        need = 8 + 8 + 2 + (uint32_t)strlen(k_export) + 1;
+        if (place + need > sec_rawsz || sec_va + place + need > sec_va + sect_align) {
+            free(image);
+            fail(err, err_cap, "no room to name the import");
+            return -1;
+        }
+        int_rva = sec_va + place;
+        iat_rva = int_rva + 8;
+        ibn_rva = iat_rva + 8;
+        memset(image + sec_raw + place, 0, need);
+        put32(image + sec_raw + place, ibn_rva);
+        put32(image + sec_raw + place + 8, ibn_rva);
+        memcpy(image + sec_raw + place + 16 + 2, k_export, strlen(k_export) + 1);
+        put32(image + imp_off + match_index * 20, int_rva);
+        put32(image + imp_off + match_index * 20 + 16, iat_rva);
+        need = place + need;
+        memcpy(sec + sec_i * 40 + 8, &need, 4);
+        if (commit_image(path, image, (size_t)file_size, e_lfanew, err, err_cap) != 0) {
+            free(image);
+            return -1;
+        }
         free(image);
-        fail(err, err_cap, "already patched");
-        return 1;
+        fail(err, err_cap, "patched");
+        return 0;
     }
 
     new_va = 0;
@@ -180,7 +290,12 @@ int pe_add_import(const char *path, const char *dll_name, char *err, unsigned er
     new_off = align_up((uint32_t)file_size, file_align);
 
     desc_bytes = (orig_count + 2) * 20;
-    blob_cap = desc_bytes + 64 + (uint32_t)strlen(dll_name) + file_align;
+    int_off = desc_bytes;
+    iat_off = int_off + 8;
+    ibn_off = iat_off + 8;
+    name_off = align_up(ibn_off + 2 + (uint32_t)strlen(k_export) + 1, 2);
+    blob_len = name_off + (uint32_t)strlen(dll_name) + 1;
+    blob_cap = blob_len + file_align;
     blob = calloc(1, blob_cap);
     if (!blob) {
         free(image);
@@ -188,14 +303,10 @@ int pe_add_import(const char *path, const char *dll_name, char *err, unsigned er
         return -1;
     }
     memcpy(blob, image + imp_off, orig_count * 20);
-    blob_len = desc_bytes;
-    int_off = blob_len;
-    blob_len += 4;
-    iat_off = blob_len;
-    blob_len += 4;
-    name_off = blob_len;
-    memcpy(blob + blob_len, dll_name, strlen(dll_name) + 1);
-    blob_len += (uint32_t)strlen(dll_name) + 1;
+    put32(blob + int_off, new_va + ibn_off);
+    put32(blob + iat_off, new_va + ibn_off);
+    memcpy(blob + ibn_off + 2, k_export, strlen(k_export) + 1);
+    memcpy(blob + name_off, dll_name, strlen(dll_name) + 1);
     virt_size = blob_len;
     raw_size = align_up(blob_len, file_align);
 
@@ -244,52 +355,11 @@ int pe_add_import(const char *path, const char *dll_name, char *err, unsigned er
     }
     free(blob);
 
-    checksum_off = (size_t)e_lfanew + 24u + 64u;
-    memset(image + checksum_off, 0, 4);
-    sum = pe_checksum(image, new_off + raw_size, checksum_off);
-    memcpy(image + checksum_off, &sum, 4);
-
-    snprintf(bak, sizeof bak, "%s.bak", path);
-    file = fopen(bak, "rb");
-    if (file) {
-        fclose(file);
-    } else {
-        file = fopen(bak, "wb");
-        if (!file) {
-            free(image);
-            fail(err, err_cap, "cannot write backup");
-            return -1;
-        }
-        {
-            FILE *src = fopen(path, "rb");
-            uint8_t buf[8192];
-            size_t n;
-            if (!src) {
-                fclose(file);
-                free(image);
-                fail(err, err_cap, "cannot write backup");
-                return -1;
-            }
-            while ((n = fread(buf, 1, sizeof buf, src)) > 0) fwrite(buf, 1, n, file);
-            fclose(src);
-            fclose(file);
-        }
-    }
-
-    snprintf(tmp, sizeof tmp, "%s.truntmp", path);
-    file = fopen(tmp, "wb");
-    if (!file || fwrite(image, 1, new_off + raw_size, file) != new_off + raw_size) {
-        if (file) fclose(file);
+    if (commit_image(path, image, new_off + raw_size, e_lfanew, err, err_cap) != 0) {
         free(image);
-        fail(err, err_cap, "cannot write patched exe");
         return -1;
     }
-    fclose(file);
     free(image);
-    if (rename(tmp, path) != 0) {
-        fail(err, err_cap, "cannot replace exe");
-        return -1;
-    }
     fail(err, err_cap, "patched");
     return 0;
 }

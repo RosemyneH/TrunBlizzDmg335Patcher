@@ -23,7 +23,7 @@ $(BUILD)/libTrunBlizzDmg335Patcher.so: src/linux_so.c src/elf_sym.c src/damage.c
 	$(CC) $(CFLAGS) -fPIC -shared -o $@ src/linux_so.c src/elf_sym.c src/damage.c src/detour.c src/decode.c src/abbrev.c
 
 $(BUILD)/TrunBlizzDmg335Patcher.dll: src/win_dll.c src/damage.c src/detour.c src/decode.c src/abbrev.c | $(BUILD)
-	$(MINGW) $(CFLAGS) -shared -o $@ src/win_dll.c src/damage.c src/detour.c src/decode.c src/abbrev.c
+	$(MINGW) $(CFLAGS) -shared -static-libgcc -o $@ src/win_dll.c src/damage.c src/detour.c src/decode.c src/abbrev.c
 
 $(BUILD)/TrunBlizzDmg335Patcher.exe: src/patch_main.c src/pe_patch.c | $(BUILD)
 	$(MINGW) $(CFLAGS) -o $@ src/patch_main.c src/pe_patch.c

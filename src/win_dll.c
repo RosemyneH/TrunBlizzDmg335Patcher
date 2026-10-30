@@ -37,6 +37,9 @@ static void install(void) {
     damage_install(create_fn, update, exec, lua_state);
 }
 
+__declspec(dllexport) void TrunBlizzLoad(void) {
+}
+
 BOOL WINAPI DllMain(HINSTANCE module, DWORD reason, LPVOID reserved) {
     (void)module;
     (void)reserved;
