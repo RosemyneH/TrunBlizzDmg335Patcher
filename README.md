@@ -15,6 +15,8 @@
 
 Values under 1000 stay as they are. The first decimal is cut off, not rounded.
 
+If this helped, [star the repo](https://github.com/RosemyneH/TrunBlizzDmg335Patcher).
+
 ## Download
 
 Grab the [1.0 release](https://github.com/RosemyneH/TrunBlizzDmg335Patcher/releases/tag/1.0).
