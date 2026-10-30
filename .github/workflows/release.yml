@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags: ["1.*", "v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the 32-bit mingw compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-i686
+      - name: Build and test
+        run: make
+      - name: Stage release files
+        run: |
+          mkdir -p dist
+          cp build/TrunBlizzDmg335Patcher.exe dist/
+          cp build/TrunBlizzDmg335Patcher.dll dist/
+          cp build/TrunBlizzDmg335Patcher dist/TrunBlizzDmg335Patcher-linux
+          cp build/libTrunBlizzDmg335Patcher.so dist/
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            Shortens 3.3.5a combat numbers. `115232` is drawn as `115.2K`.
+
+            Put `TrunBlizzDmg335Patcher.exe` and `TrunBlizzDmg335Patcher.dll` next to 32-bit `Wow.exe` or `WowExt.exe`, then run the exe on that client.
+
+            For the 64-bit `WowClient64`, use `TrunBlizzDmg335Patcher-linux` and `libTrunBlizzDmg335Patcher.so`.
