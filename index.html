@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TrunBlizzDmg335Patcher</title>
+<style>
+body { font: 16px/1.45 sans-serif; max-width: 42rem; margin: 2rem auto; padding: 0 1rem; }
+code { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>TrunBlizzDmg335Patcher</h1>
+<p>Shortens the combat numbers in a 3.3.5a client. <code>115232</code> is drawn as <code>115.2K</code>, <code>2400000</code> as <code>2.4M</code>. Values under 1000 stay as they are. The cut keeps the first decimal and does not round it up.</p>
+<p>World numbers over a unit, the scrolling combat text, and the portrait feedback text are the ones that change. Miss, absorb, and the chat combat log stay written out in full.</p>
+<h2>Build</h2>
+<pre><code>make</code></pre>
+<p>That produces the tests, the Linux patcher, <code>libTrunBlizzDmg335Patcher.so</code>, and the 32-bit <code>TrunBlizzDmg335Patcher.dll</code> plus <code>TrunBlizzDmg335Patcher.exe</code>.</p>
+<h2>32-bit Wow.exe 12340</h2>
+<p>Copy <code>TrunBlizzDmg335Patcher.exe</code> and <code>TrunBlizzDmg335Patcher.dll</code> next to <code>Wow.exe</code>. Run the exe and pass it the client:</p>
+<pre><code>TrunBlizzDmg335Patcher.exe Wow.exe</code></pre>
+<p>It writes <code>Wow.exe.bak</code> once, then adds an import so the game loads the DLL. The DLL checks the 12340 bytes at <code>PlayerNameCreateText</code> before it hooks anything. Run the patcher again and it leaves an already patched client alone. A client that hashes <code>Wow.exe</code> will see a different file after this.</p>
+<h2>64-bit WowClient64</h2>
+<p>The 64-bit client is the unstripped build. Copy <code>libTrunBlizzDmg335Patcher.so</code> next to it and run:</p>
+<pre><code>./TrunBlizzDmg335Patcher ./WowClient64</code></pre>
+<p>That writes <code>TrunBlizzDmg335.sh</code> in the same folder. Launch the script. The library finds <code>PlayerNameCreateText</code> from the binary's symbol table, so a rebuild still works as long as those symbols are still there.</p>
+</body>
+</html>

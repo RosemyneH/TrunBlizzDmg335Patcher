@@ -1,0 +1,5 @@
+build/
+*.bak
+*.truntmp
+*.log
+TrunBlizzDmg335.sh
